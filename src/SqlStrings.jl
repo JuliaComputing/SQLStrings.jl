@@ -1,11 +1,11 @@
 module SqlStrings
 
-export @sql
+export @sql_cmd
 
 """
     Literal(str)
 
-Literal string argument to `@sql`. These are literal query fragments of SQL
+Literal string argument to `@sql_cmd`. These are literal query fragments of SQL
 source text.
 """
 struct Literal
@@ -19,8 +19,9 @@ Literal(val) = Literal(string(val))
 """
     Sql
 
-A query or query-fragment which keeps track of interpolations and will pass
-them as SQL query parameters. Construct this type with the `@sql` macro.
+An SQL query or query-fragment which keeps track of interpolations and will
+pass them as SQL query parameters. Construct this type with the `@sql_cmd`
+macro.
 """
 struct Sql
     args::Vector
@@ -54,12 +55,77 @@ function process_args!(processed, splat::SplatArgs, args...)
     return process_args!(processed, args...)
 end
 
+function parse_interpolations(str, allow_dollars_in_strings)
+    args = []
+    i = 1
+    literal_start = i
+    literal_end = 0
+    in_singlequote = false
+    prev_was_backslash = false
+    while i <= lastindex(str)
+        c = str[i]
+        if !allow_dollars_in_strings && in_singlequote && c == '$'
+            error("""Interpolated arguments should not be quoted, but found quoting in sql`$str`
+                     subexpression starting at `$(str[i:end])`""")
+        end
+        if c == '$' && !in_singlequote
+            if prev_was_backslash
+                literal_end = prevind(str, literal_end, 1)
+                if literal_start <= literal_end
+                    push!(args, Literal(str[literal_start:literal_end]))
+                end
+                literal_start = i
+                i = nextind(str, i)
+            else
+                if literal_start <= literal_end
+                    push!(args, Literal(str[literal_start:literal_end]))
+                end
+                (interpolated_arg, i) = Meta.parse(str, i+1; greedy=false)
+                if Meta.isexpr(interpolated_arg, :...)
+                    push!(args, :(SplatArgs($(esc(interpolated_arg.args[1])))))
+                else
+                    push!(args, esc(interpolated_arg))
+                end
+                literal_start = i
+            end
+        else
+            if c == '\''
+                # We assume standard SQL which uses '' rather than \' for
+                # escaping quotes.
+                in_singlequote = !in_singlequote
+            end
+            literal_end = i
+            i = nextind(str, i)
+        end
+        prev_was_backslash = c == '\\'
+    end
+    if literal_start <= literal_end
+        push!(args, Literal(str[literal_start:literal_end]))
+    end
+    args
+end
+
+"""
+    allow_dollars_in_strings[] = true
+
+Set this parsing option to `false` to disallow dollars inside SQL strings, for
+example disallowing the `'\$s'` in
+
+    sql`select * from foo where s = '\$s'`
+
+When converting code from plain string-based interpolation, it's helpful to
+have a macro-expansion-time sanity check that no manual quoting of interpolated
+arguments remains.
+"""
+const allow_dollars_in_strings = Ref(true)
+
 """
     sql`SOME SQL ... \$var`
     sql`SOME SQL ... \$(var...)`
+    sql`SOME SQL ... 'A \$literal string'`
     sql``
 
-The `@sql` macro is a tool for tracking SQL query strings together with
+The `@sql_cmd` macro is a tool for tracking SQL query strings together with
 their parameters, but without interpolating the parameters into the query
 string directly. Instead, interpolations like `\$x` will result in the value of
 `x` being passed as a query parameter. If you've got a collection of values to
@@ -68,60 +134,44 @@ within the interpolation, for example `insert into foo values(\$(x...))`.
 
 Use this rather than direct string interpolation to prevent SQL injection
 attacks and allow systematic conversion of Julia types into their SQL
-equivalents.
+equivalents via the database layer, rather than via `string()`.
 
 Empty query fragments can be generated with ```sql`` ``` which is useful if you
-must dynamically generate SQL code based on conditionals (however also consider
-embedding any conditionals on the SQL side rather than in the Julia code.)
+must dynamically generate SQL code based on conditionals. However you should
+also consider embedding any conditionals on the SQL side rather than in the
+Julia code.
+
+*Interpolations are ignored* inside standard SQL Strings with a single quote,
+so using `'A \$literal string'` will include `\$literal` rather than the value
+of the variable `literal`. If converting code from using raw strings, you may
+have needed to quote interpolations. In that case you can check your conversion
+by setting `SqlStrings.allow_dollars_in_strings[] = false`.
+
+If you need to include a literal `\$` in the SQL code outside a string, you can
+escape it with `\\\$`.
 """
-macro sql(ex)
-    if ex isa String
-        args = [Literal(ex)]
-    elseif ex isa Expr && ex.head == :string
-        args = []
-        for (i,arg) in enumerate(ex.args)
-            if arg isa String
-                push!(args, Literal(arg))
-            else
-                # Sanity check: arguments should not be quoted
-                prev_quote = i > 1               && ex.args[i-1] isa String && endswith(ex.args[i-1], '\'')
-                next_quote = i < length(ex.args) && ex.args[i+1] isa String && startswith(ex.args[i+1], '\'')
-                if prev_quote || next_quote
-                    error("""Interpolated arguments should not be quoted, but found quoting in subexpression
-                             $(Expr(:string, ex.args[i-1:i+1]...))""")
-                end
-                if Meta.isexpr(arg, :...)
-                    push!(args, :(SplatArgs($(esc(arg.args[1])))))
-                else
-                    push!(args, esc(arg))
-                end
-            end
-        end
-    else
-        error("Unexpected expression passed to @sql: `$ex`")
-    end
+macro sql_cmd(str)
+    args = parse_interpolations(str, allow_dollars_in_strings[])
     quote
         Sql(process_args!([], $(args...)))
     end
-end
-
-macro sql()
-    Sql([])
 end
 
 function Base.:*(x::Sql, y::Sql)
     Sql(vcat(x.args, [Literal(" ")], y.args))
 end
 
-function _prepare(query::Sql)
+default_placeholder_string(i) = "\$$i"
+
+function prepare(sql::Sql, to_placeholder = default_placeholder_string)
     querystr = ""
     arg_values = []
     i = 1
-    for arg in query.args
+    for arg in sql.args
         if arg isa Literal
             querystr *= arg.fragment
         else
-            querystr *= "\$$i"
+            querystr *= to_placeholder(i)
             push!(arg_values, arg)
             i += 1
         end
@@ -129,8 +179,8 @@ function _prepare(query::Sql)
     querystr, arg_values
 end
 
-function Base.show(io::IO, query::Sql)
-    query, arg_values = _prepare(query)
+function Base.show(io::IO, sql::Sql)
+    query, arg_values = prepare(sql)
     print(io, query)
     if !isempty(arg_values)
         args_str = join(["\$$i = $(repr(val))" for (i,val) in enumerate(arg_values)], "\n  ")
