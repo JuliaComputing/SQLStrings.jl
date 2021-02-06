@@ -145,8 +145,8 @@ integration with your database of choice by being unopinionated about its
 source language and any SQL language extensions it may have.
 
 I've chosen backticks for `@sql_cmd` rather than a normal string macro because
-* It's important to have syntax highlighting, and it seems editors disable
-  syntax highlighting of interpolations within normal string macros.
+* It's important to have syntax highlighting for interpolations, but editors
+  typically disable this within normal string macros.
 * `@sql_cmd` is very conceptually similar to the builtin backticks and
   `Base.Cmd`: it's a lightweight layer which deals only with preserving the
   structure of tokens in the source text.
