@@ -1,24 +1,40 @@
 # SqlStrings
 
-This package provides the `@sql_cmd` macro to allow SQL query strings to be
-constructed by normal-looking string interpolation but without danger of SQL
-injection attacks.
+SqlStrings.jl provides the `@sql_cmd` macro to allow SQL query strings to be
+constructed by normal-looking string interpolation but without risking SQL
+formatting errors or SQL injection attacks on your application. For example,
+the code
+
+```julia
+query = "INSERT INTO Students VALUES ('$name', $age, '$class')"
+runquery(connection, query);
+```
+
+is vulerable to the canonical SQL injection attack:
 
 [![Little Bobby Tables](https://imgs.xkcd.com/comics/exploits_of_a_mom.png)](https://xkcd.com/327)
 
-`@sql_cmd` is quite simple — it understands only the basic rules of SQL
-quoting and Julia string interpolation, but does no other parsing of the source
-text. In this sense it is quite similar to `Base.Cmd` - it keeps any literal
-SQL text you write as-is and captures the Julia-level string interpolations
-in a safe way.
+Here's how to make this safe using SqlStrings.jl:
 
-## Simple usage
+```julia
+query = sql`INSERT INTO Students VALUES ($name, $age, $class)`
+runquery(connection, query);
+```
+
+In addition to making the above code safe, it allows the Julia types of
+interpolated parameters to be preserved and passed to the database driver
+library which can then marshal them correctly into types it understands. This
+provides more control than using string interpolation which is for human
+readability rather than data transfer.
+
+# Simple usage
 
 To use with a given database backend, you'll need a small amount of integration
 code. In the examples below we'll use with LibPQ.jl and a `runquery()` function
 (hopefully integration will be automatic in future).
 
 ```julia
+using SqlStrings
 import LibPQ
 
 runquery(conn, sql::SqlStrings.Sql)
@@ -52,7 +68,9 @@ julia> runquery(conn, sql`SELECT * FROM foo`) |> DataFrame
    2 │ foo@example.com         2
 ```
 
-## Howto: Inserting values from a Julia array into a row
+# Howtos
+
+## Inserting values from a Julia collection into a row
 
 In some circumstances it can be useful to use splatting syntax to interpolate a
 Julia collection into a comma-separated list of values. Generally simple scalar
@@ -64,7 +82,7 @@ email_and_id = ("bar@example.com", 3)
 runquery(conn, sql`INSERT INTO foo VALUES ($(email_and_id...))`)
 ```
 
-## Howto: Using the `in` operator with a Julia collection
+## Using the `in` operator with a Julia collection
 
 There's two ways to do this. First, using `in` and splatting syntax
 
@@ -92,7 +110,7 @@ julia> ids = [1,2]
           2 │ foo@example.com         2
 ```
 
-## Howto: Building up a query from fragments
+## Building up a query from fragments
 
 On occasion you might want to dynamically build up a complicated query from
 fragments of SQL source text. To do this, the result of `@sql_cmd` can be
@@ -117,4 +135,19 @@ runquery(conn, q)
 A word of warning that constructing SQL logic with Julia-level logic can make
 the code quite hard to understand. It can be worth considering writing one
 larger SQL query which does more of the logic on the SQL side.
+
+# Design
+
+`SqlStrings` is a minimal approach to integrating SQL with Julia code in a safe
+way — it understands only the basic rules of SQL quoting and Julia string
+interpolation, but does no other parsing of the source text. This allows tight
+integration with your database of choice by being unopinionated about its
+source language and any SQL language extensions it may have.
+
+I've chosen backticks for `@sql_cmd` rather than a normal string macro because
+* It's important to have syntax highlighting, and it seems editors disable
+  syntax highlighting of interpolations within normal string macros.
+* `@sql_cmd` is very conceptually similar to the builtin backticks and
+  `Base.Cmd`: it's a lightweight layer which deals only with preserving the
+  structure of tokens in the source text.
 
