@@ -1,6 +1,6 @@
-# SqlStrings
+# SQLStrings
 
-SqlStrings.jl provides the `@sql_cmd` macro to allow SQL query strings to be
+SQLStrings.jl provides the `@sql_cmd` macro to allow SQL query strings to be
 constructed by normal-looking string interpolation but without risking SQL
 formatting errors or SQL injection attacks on your application. For example,
 the code
@@ -14,7 +14,7 @@ is vulerable to the canonical SQL injection attack:
 
 [![Little Bobby Tables](https://imgs.xkcd.com/comics/exploits_of_a_mom.png)](https://xkcd.com/327)
 
-Here's how to make this safe using SqlStrings.jl:
+Here's how to make this safe using SQLStrings.jl:
 
 ```julia
 query = sql`INSERT INTO Students VALUES ($name, $age, $class)`
@@ -34,11 +34,11 @@ code. In the examples below we'll use with LibPQ.jl and a `runquery()` function
 (hopefully integration will be automatic in future).
 
 ```julia
-using SqlStrings
+using SQLStrings
 import LibPQ
 
-runquery(conn, sql::SqlStrings.Sql)
-    query, args = SqlStrings.prepare(sql)
+runquery(conn, sql::SQLStrings.Sql)
+    query, args = SQLStrings.prepare(sql)
     LibPQ.execute(conn, query, args)
 end
 ```
@@ -138,7 +138,7 @@ larger SQL query which does more of the logic on the SQL side.
 
 # Design
 
-`SqlStrings` is a minimal approach to integrating SQL with Julia code in a safe
+`SQLStrings` is a minimal approach to integrating SQL with Julia code in a safe
 way — it understands only the basic rules of SQL quoting and Julia string
 interpolation, but does no other parsing of the source text. This allows tight
 integration with your database of choice by being unopinionated about its

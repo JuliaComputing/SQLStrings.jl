@@ -1,4 +1,4 @@
-module SqlStrings
+module SQLStrings
 
 export @sql_cmd
 
@@ -145,7 +145,7 @@ Julia code.
 so using `'A \$literal string'` will include `\$literal` rather than the value
 of the variable `literal`. If converting code from using raw strings, you may
 have needed to quote interpolations. In that case you can check your conversion
-by setting `SqlStrings.allow_dollars_in_strings[] = false`.
+by setting `SQLStrings.allow_dollars_in_strings[] = false`.
 
 If you need to include a literal `\$` in the SQL code outside a string, you can
 escape it with `\\\$`.

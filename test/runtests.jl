@@ -1,11 +1,11 @@
-using SqlStrings
+using SQLStrings
 using Test
 using UUIDs
 
-querystr(q) = SqlStrings.prepare(q)[1]
-queryargs(q) = SqlStrings.prepare(q)[2]
+querystr(q) = SQLStrings.prepare(q)[1]
+queryargs(q) = SQLStrings.prepare(q)[2]
 
-@testset "SqlStrings.jl" begin
+@testset "SQLStrings.jl" begin
     x = 1
     y = 2
     q1 = sql`select a where b=$x and c=$(x+y)`
@@ -28,7 +28,7 @@ queryargs(q) = SqlStrings.prepare(q)[2]
     # On occasion, we need to interpolate in a literal string rather than use a
     # parameter. Test that interpolating Literal works for this case.
     column = "x"
-    @test querystr(sql`select $(SqlStrings.Literal(column)) from a`) ==
+    @test querystr(sql`select $(SQLStrings.Literal(column)) from a`) ==
         raw"select x from a"
 
     # Test splatting syntax
@@ -38,8 +38,8 @@ queryargs(q) = SqlStrings.prepare(q)[2]
     @test queryargs(q4) == z
 
     # Test that Literal turns values into strings
-    @test SqlStrings.Literal(:col_name).fragment == "col_name"
-    @test SqlStrings.Literal(1).fragment == "1"
+    @test SQLStrings.Literal(:col_name).fragment == "col_name"
+    @test SQLStrings.Literal(1).fragment == "1"
 
     # Test dollars inside SQL strings - the $x here should be a literal.
     q5 = sql`select $y where x = '$x'`
@@ -49,8 +49,8 @@ queryargs(q) = SqlStrings.prepare(q)[2]
     q6 = sql`some literal \$a`
     @test querystr(q6) == raw"some literal $a"
 
-    SqlStrings.allow_dollars_in_strings[] = false
+    SQLStrings.allow_dollars_in_strings[] = false
     @test_throws LoadError @macroexpand sql`select $y where x = '$x'`
-    SqlStrings.allow_dollars_in_strings[] = true
+    SQLStrings.allow_dollars_in_strings[] = true
 end
 
