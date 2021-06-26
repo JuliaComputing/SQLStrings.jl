@@ -37,7 +37,7 @@ code. In the examples below we'll use with LibPQ.jl and a `runquery()` function
 using SQLStrings
 import LibPQ
 
-runquery(conn, sql::SQLStrings.Sql)
+function runquery(conn, sql::SQLStrings.Sql)
     query, args = SQLStrings.prepare(sql)
     LibPQ.execute(conn, query, args)
 end
